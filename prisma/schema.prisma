@@ -1,0 +1,220 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: a connection string NÃO fica mais aqui.
+// - `prisma.config.ts` (raiz do projeto) define a URL usada pelo CLI (migrate/db push) → DIRECT_URL.
+// - `lib/prisma.ts` define a URL usada em runtime via driver adapter (@prisma/adapter-pg) → DATABASE_URL (pooled).
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Auth.js v5 (Prisma Adapter, database sessions) ----------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  // Nulo quando o usuário só usa OAuth (ex: Google, adicionado futuramente).
+  passwordHash  String?
+
+  accounts         Account[]
+  sessions         Session[]
+  priceAlerts      PriceAlert[]
+  aiProviderConfig AiProviderConfig?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- Domínio de preços ----------
+
+enum AvailabilityStatus {
+  IN_STOCK
+  OUT_OF_STOCK
+  UNKNOWN
+}
+
+enum AlertStatus {
+  ACTIVE
+  PAUSED
+  TRIGGERED
+  CANCELLED
+}
+
+enum AiProvider {
+  GEMINI
+}
+
+model Store {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  // Chave usada no registry de providers, ex: "mercado_livre" | "vtex:decathlon" | "kabum_html".
+  providerKey String   @unique
+  websiteUrl  String
+  logoUrl     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  offers ProductOffer[]
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  canonicalTitle String
+  brand          String?
+  category       String?
+  imageUrl       String?
+  // Texto livre auxiliar de busca local/fallback (sem IA/rede).
+  searchKeywords String?
+  // Alimenta o badge "menor preço já visto".
+  lowestPriceEver Decimal? @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  offers      ProductOffer[]
+  priceAlerts PriceAlert[]
+
+  @@index([canonicalTitle])
+}
+
+model ProductOffer {
+  id            String             @id @default(cuid())
+  productId     String
+  storeId       String
+  // Título bruto como veio da loja (antes da normalização da IA).
+  title         String
+  price         Decimal            @db.Decimal(10, 2)
+  shippingCost  Decimal?           @db.Decimal(10, 2)
+  availability  AvailabilityStatus @default(UNKNOWN)
+  productUrl    String
+  imageUrl      String?
+  // SKU/MLB id/etc — ajuda dedup e refetch direcionado.
+  externalId    String?
+  rating        Float?
+  reviewsCount  Int?
+  // false quando a oferta some/dá 404 na loja de origem.
+  isActive      Boolean            @default(true)
+  lastCheckedAt DateTime           @default(now())
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  history PriceHistory[]
+
+  @@index([productId])
+  @@index([storeId])
+  @@index([storeId, externalId])
+}
+
+model PriceHistory {
+  id             String             @id @default(cuid())
+  productOfferId String
+  price          Decimal            @db.Decimal(10, 2)
+  shippingCost   Decimal?           @db.Decimal(10, 2)
+  availability   AvailabilityStatus
+  recordedAt     DateTime           @default(now())
+
+  productOffer ProductOffer @relation(fields: [productOfferId], references: [id], onDelete: Cascade)
+
+  @@index([productOfferId, recordedAt])
+}
+
+model PriceAlert {
+  id               String      @id @default(cuid())
+  userId           String
+  productId        String
+  // Nulo quando alertOnAnyDrop = true (avisa em qualquer queda de preço).
+  targetPrice      Decimal?    @db.Decimal(10, 2)
+  alertOnAnyDrop   Boolean     @default(false)
+  status           AlertStatus @default(ACTIVE)
+  lastCheckedPrice Decimal?    @db.Decimal(10, 2)
+  lastNotifiedAt   DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([status])
+}
+
+model AiProviderConfig {
+  id                    String     @id @default(cuid())
+  userId                String     @unique
+  provider              AiProvider @default(GEMINI)
+  // AES-256-GCM, nunca texto puro. Formato: "iv:authTag:ciphertext" em base64.
+  encryptedApiKey       String?    @db.Text
+  model                 String?
+  enableGroundingSearch Boolean    @default(false)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Token OAuth de integrações da própria aplicação (não por usuário) — hoje só Mercado Livre.
+// Guardado no banco (não em env) porque access_token expira a cada poucas horas e precisa
+// ser renovado automaticamente via refresh_token; ver lib/integrations/mercadoLivre.ts.
+model IntegrationToken {
+  id                    String   @id @default(cuid())
+  provider              String   @unique
+  encryptedAccessToken  String   @db.Text
+  encryptedRefreshToken String   @db.Text
+  expiresAt             DateTime
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model SearchCache {
+  id               String   @id @default(cuid())
+  queryHash        String   @unique
+  query            String
+  resultProductIds String[]
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+
+  @@index([expiresAt])
+}
