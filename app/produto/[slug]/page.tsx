@@ -69,7 +69,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
               <p className="text-3xl font-bold tracking-tight text-foreground">
                 {formatBRL(cheapest.totalPrice)}
               </p>
-              <p className="text-sm text-muted-foreground">na {cheapest.storeName}</p>
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <span className="text-sm text-muted-foreground">Vendido por</span>
+                <Badge tone="blue">{cheapest.storeName}</Badge>
+              </div>
               {product.lowestPriceEver !== null && cheapest.price <= product.lowestPriceEver && (
                 <span className="mt-2 inline-flex items-center rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
                   Menor preço já visto

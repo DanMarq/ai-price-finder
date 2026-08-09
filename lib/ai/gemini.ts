@@ -49,18 +49,26 @@ export async function withGeminiModelFallback<T>(
 ): Promise<T> {
   const attempts = modelAttemptOrder(preferredModel);
   let lastError: unknown;
+  const failures: string[] = [];
 
   for (const model of attempts) {
     try {
-      return await attempt(model);
+      const result = await attempt(model);
+      // Um resumo (não um log por tentativa) evita inundar o console quando vários modelos
+      // seguidos estão com cota esgotada — comum em contas free tier sob uso intenso.
+      if (failures.length > 0) {
+        console.warn(`[gemini] usou "${model}" após falha em: ${failures.join(", ")}`);
+      }
+      return result;
     } catch (error) {
       lastError = error;
       if (isKeyLevelError(error)) throw error;
       const status = error instanceof ApiError ? error.status : undefined;
-      console.warn(`[gemini] modelo "${model}" falhou${status ? ` (HTTP ${status})` : ""}, tentando próximo da cascata...`);
+      failures.push(`${model}${status ? ` (${status})` : ""}`);
     }
   }
 
+  console.warn(`[gemini] cascata inteira falhou: ${failures.join(", ")}`);
   throw lastError instanceof Error ? lastError : new Error("Todos os modelos Gemini da cascata falharam");
 }
 
