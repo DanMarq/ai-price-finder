@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { SearchBar } from "@/components/search/SearchBar";
-import { SignOutButton } from "@/components/auth/SignOutButton";
+import { UserMenu } from "@/components/layout/UserMenu";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 export async function Navbar() {
@@ -22,7 +22,10 @@ export async function Navbar() {
           <div className="flex items-center gap-1 sm:hidden">
             <ThemeToggle />
             {session?.user ? (
-              <SignOutButton />
+              <UserMenu
+                name={session.user.name ?? session.user.email ?? "Minha conta"}
+                isMaster={session.user.role === "MASTER"}
+              />
             ) : (
               <Link
                 href="/login"
@@ -53,15 +56,12 @@ export async function Navbar() {
               >
                 Meus alertas
               </Link>
-              <Link
-                href="/configuracoes"
-                className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                Configurações
-              </Link>
               <div className="ml-1 h-5 w-px bg-border" />
               <ThemeToggle />
-              <SignOutButton />
+              <UserMenu
+                name={session.user.name ?? session.user.email ?? "Minha conta"}
+                isMaster={session.user.role === "MASTER"}
+              />
             </>
           ) : (
             <>
@@ -92,14 +92,9 @@ export async function Navbar() {
             Monitorar produto
           </Link>
           {session?.user ? (
-            <>
-              <Link href="/alertas" className="shrink-0 text-sm font-medium text-muted-foreground">
-                Meus alertas
-              </Link>
-              <Link href="/configuracoes" className="shrink-0 text-sm font-medium text-muted-foreground">
-                Configurações
-              </Link>
-            </>
+            <Link href="/alertas" className="shrink-0 text-sm font-medium text-muted-foreground">
+              Meus alertas
+            </Link>
           ) : (
             <Link href="/cadastro" className="shrink-0 text-sm font-medium text-primary">
               Criar conta

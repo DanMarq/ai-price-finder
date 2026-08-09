@@ -71,9 +71,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
               </p>
               <p className="text-sm text-muted-foreground">na {cheapest.storeName}</p>
               {product.lowestPriceEver !== null && cheapest.price <= product.lowestPriceEver && (
-                <Badge tone="green" className="mt-2">
+                <span className="mt-2 inline-flex items-center rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
                   Menor preço já visto
-                </Badge>
+                </span>
               )}
             </div>
           ) : (

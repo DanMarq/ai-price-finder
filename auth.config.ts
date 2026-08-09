@@ -1,6 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 
-const PROTECTED_PREFIXES = ["/alertas", "/configuracoes", "/monitorar"];
+const PROTECTED_PREFIXES = ["/alertas", "/configuracoes", "/monitorar", "/usuarios"];
 
 export default {
   pages: {

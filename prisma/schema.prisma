@@ -11,6 +11,11 @@ datasource db {
 
 // ---------- Auth.js v5 (Prisma Adapter, database sessions) ----------
 
+enum Role {
+  USER
+  MASTER
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -19,11 +24,14 @@ model User {
   image         String?
   // Nulo quando o usuário só usa OAuth (ex: Google, adicionado futuramente).
   passwordHash  String?
+  // MASTER dá acesso à tela /usuarios (admin interno). Definido manualmente no banco.
+  role          Role      @default(USER)
 
   accounts         Account[]
   sessions         Session[]
   priceAlerts      PriceAlert[]
   aiProviderConfig AiProviderConfig?
+  searchLogs       SearchLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -206,6 +214,21 @@ model IntegrationToken {
   expiresAt             DateTime
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+// Histórico de buscas realizadas, para a tela de administração (/usuarios).
+model SearchLog {
+  id           String   @id @default(cuid())
+  // Nulo para buscas de visitantes não logados.
+  userId       String?
+  query        String
+  resultsCount Int
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model SearchCache {

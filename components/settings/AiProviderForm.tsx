@@ -53,12 +53,16 @@ export function AiProviderForm({ hasKey, maskedKey, model, enableGroundingSearch
           required
         />
         <Input
-          label="Modelo (opcional)"
+          label="Modelo preferido (opcional)"
           name="model"
           type="text"
           placeholder={defaultModel}
           defaultValue={model !== defaultModel ? model : undefined}
         />
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Se esse modelo estiver com cota esgotada ou indisponível, o sistema tenta
+          automaticamente vários outros modelos Gemini (2.5, 3, 3.1, 3.5...) antes de desistir.
+        </p>
         <label className="flex items-center gap-2 text-sm text-foreground">
           <input
             type="checkbox"
@@ -88,5 +92,5 @@ export function AiProviderForm({ hasKey, maskedKey, model, enableGroundingSearch
         . Sua chave fica criptografada e nunca é exibida novamente em texto puro.
       </p>
     </div>
-  );
+  )
 }

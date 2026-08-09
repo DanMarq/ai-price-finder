@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 import authConfig from "@/auth.config";
@@ -17,8 +18,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) token.id = user.id;
       return token;
     },
-    session({ session, token }) {
+    async session({ session, token }) {
       if (token.id) session.user.id = token.id as string;
+      // Busca a role atual no banco em vez de confiar só no token — evita a role ficar
+      // "presa" no valor de quando o usuário logou (ex: promoção a MASTER só valeria depois
+      // de um novo login se dependêssemos apenas do JWT).
+      if (token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { role: true },
+        });
+        session.user.role = dbUser?.role ?? ("USER" as Role);
+      }
       return session;
     },
   },

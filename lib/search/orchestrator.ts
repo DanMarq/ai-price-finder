@@ -3,7 +3,7 @@ import { getActiveProviders } from "@/lib/providers/registry";
 import { createGeminiGroundingProvider } from "@/lib/providers/geminiGroundingProvider";
 import { withTimeout, type PriceProvider, type RawOffer } from "@/lib/providers/types";
 import { resolveGeminiConfig } from "@/lib/ai/resolveApiKey";
-import { enrichOffersWithGemini, FALLBACK_GEMINI_MODEL } from "@/lib/ai/gemini";
+import { enrichOffersWithGemini } from "@/lib/ai/gemini";
 import type { EnrichedGroup } from "@/lib/ai/schemas";
 import { groupOffersHeuristically } from "./normalize";
 import { getCachedSearch, setCachedSearch } from "./cache";
@@ -221,6 +221,14 @@ function safeOrigin(url: string): string {
   }
 }
 
+async function logSearch(userId: string | undefined, query: string, resultsCount: number) {
+  try {
+    await prisma.searchLog.create({ data: { userId: userId ?? null, query, resultsCount } });
+  } catch (error) {
+    console.warn("[search] falha ao registrar log de busca:", error);
+  }
+}
+
 export async function searchProducts(
   query: string,
   opts: SearchProductsOptions = {},
@@ -228,7 +236,17 @@ export async function searchProducts(
   const start = Date.now();
   const warnings: string[] = [];
   const normalizedQuery = normalizeQuery(query);
+  const result = await runSearch(normalizedQuery, warnings, start, opts);
+  await logSearch(opts.userId, normalizedQuery, result.products.length);
+  return result;
+}
 
+async function runSearch(
+  normalizedQuery: string,
+  warnings: string[],
+  start: number,
+  opts: SearchProductsOptions,
+): Promise<SearchProductsResult> {
   if (!opts.bypassCache) {
     const cachedIds = await getCachedSearch(normalizedQuery);
     if (cachedIds) {
@@ -270,30 +288,17 @@ export async function searchProducts(
   let groups: EnrichedGroup[];
 
   if (enableAi && geminiConfig) {
-    const modelsToTry = [geminiConfig.model, FALLBACK_GEMINI_MODEL].filter(
-      (model, index, arr) => arr.indexOf(model) === index,
-    );
-    let aiGroups: EnrichedGroup[] | null = null;
-    let lastError: unknown = null;
-
-    for (const model of modelsToTry) {
-      try {
-        const result = await enrichOffersWithGemini(geminiConfig.apiKey, model, {
-          query: normalizedQuery,
-          offers: rawOffers,
-        });
-        if (result.length === 0) throw new Error("IA não retornou grupos");
-        aiGroups = result;
-        break;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    if (aiGroups) {
+    // enrichOffersWithGemini já tenta vários modelos internamente (ver lib/ai/gemini.ts) —
+    // só cai pro agrupamento heurístico se a cascata inteira falhar.
+    try {
+      const aiGroups = await enrichOffersWithGemini(geminiConfig.apiKey, geminiConfig.model, {
+        query: normalizedQuery,
+        offers: rawOffers,
+      });
+      if (aiGroups.length === 0) throw new Error("IA não retornou grupos");
       groups = aiGroups;
-    } else {
-      const reason = lastError instanceof Error ? lastError.message : "erro desconhecido";
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "erro desconhecido";
       warnings.push(`Enriquecimento com IA indisponível, usando agrupamento sem IA: ${reason}`);
       groups = groupOffersHeuristically(rawOffers);
     }

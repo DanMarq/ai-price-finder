@@ -34,9 +34,9 @@ export function ProductCard({ product, offers }: EnrichedProductResult) {
             </div>
           )}
           {isLowestEver && (
-            <Badge tone="green" className="absolute left-2 top-2">
+            <span className="absolute left-2 top-2 inline-flex items-center rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-md shadow-black/20 ring-1 ring-black/5">
               Menor preço já visto
-            </Badge>
+            </span>
           )}
         </div>
         <div className="flex flex-1 flex-col gap-2 p-4">

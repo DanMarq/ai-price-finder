@@ -1,12 +1,68 @@
-import { GoogleGenAI, Type, type Schema } from "@google/genai";
+import { GoogleGenAI, ApiError, Type, type Schema } from "@google/genai";
 import type { RawOffer } from "@/lib/providers/types";
 import { enrichmentResultSchema, type EnrichedGroup } from "./schemas";
 
-// Usamos os aliases "-latest" do Google AI Studio em vez de fixar uma versão (ex: "gemini-2.5-flash")
-// porque versões específicas vão sendo desativadas para novas chaves com o tempo; o alias sempre
-// aponta para o modelo flash atual recomendado, evitando quebrar quando isso acontecer de novo.
-export const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
+/**
+ * Cascata de modelos de texto do Gemini (Google AI Studio), do mais capaz/atual para o mais
+ * simples. Quando um modelo esgota cota (429), fica indisponível para novas chaves (404) ou
+ * tem uma instabilidade pontual (503), tentamos o próximo automaticamente — ver
+ * `withGeminiModelFallback`. Contas diferentes têm acesso a modelos diferentes (contas mais
+ * antigas ainda enxergam a família 2.x, por exemplo), por isso a lista cobre várias gerações
+ * em vez de travar numa só. Ajuste esta lista conforme o Google lança/aposenta modelos.
+ */
+export const GEMINI_MODEL_CASCADE = [
+  "gemini-flash-latest", // alias sempre atualizado para o flash recomendado no momento
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-3.6-flash",
+  "gemini-2.5-flash", // contas mais antigas ainda têm acesso
+  "gemini-flash-lite-latest", // alias sempre atualizado para o flash-lite recomendado
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash-lite", // contas mais antigas ainda têm acesso
+  "gemini-2.0-flash-001",
+] as const;
+
+export const DEFAULT_GEMINI_MODEL: string = GEMINI_MODEL_CASCADE[0];
+// Mantido para quem já salvou esse valor como `model` em AiProviderConfig antes desta mudança.
 export const FALLBACK_GEMINI_MODEL = "gemini-flash-lite-latest";
+
+/** Erros de chave (inválida/sem permissão) não melhoram trocando de modelo — falham na hora. */
+function isKeyLevelError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 400 || error.status === 401 || error.status === 403);
+}
+
+function modelAttemptOrder(preferredModel?: string): string[] {
+  const cascade = GEMINI_MODEL_CASCADE.filter((m) => m !== preferredModel);
+  return preferredModel ? [preferredModel, ...cascade] : [...GEMINI_MODEL_CASCADE];
+}
+
+/**
+ * Roda `attempt` para cada modelo da cascata (começando pelo preferido, se informado) até um
+ * funcionar. Só desiste na hora se o erro for de chave (não adianta trocar de modelo); qualquer
+ * outro erro (cota, modelo indisponível, instabilidade, resposta malformada) passa para o
+ * próximo modelo da lista.
+ */
+export async function withGeminiModelFallback<T>(
+  preferredModel: string | undefined,
+  attempt: (model: string) => Promise<T>,
+): Promise<T> {
+  const attempts = modelAttemptOrder(preferredModel);
+  let lastError: unknown;
+
+  for (const model of attempts) {
+    try {
+      return await attempt(model);
+    } catch (error) {
+      lastError = error;
+      if (isKeyLevelError(error)) throw error;
+      const status = error instanceof ApiError ? error.status : undefined;
+      console.warn(`[gemini] modelo "${model}" falhou${status ? ` (HTTP ${status})` : ""}, tentando próximo da cascata...`);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Todos os modelos Gemini da cascata falharam");
+}
 
 const RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
@@ -64,43 +120,44 @@ Responda apenas com o JSON estruturado pedido.`;
 
 export async function enrichOffersWithGemini(
   apiKey: string,
-  model: string,
+  preferredModel: string,
   input: { query: string; offers: RawOffer[] },
 ): Promise<EnrichedGroup[]> {
   if (input.offers.length === 0) return [];
 
   const ai = new GoogleGenAI({ apiKey });
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: buildPrompt(input.query, input.offers),
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: RESPONSE_SCHEMA,
-    },
-  });
-
-  const text = response.text;
-  if (!text) throw new Error("Gemini retornou resposta vazia");
-
-  const parsed = enrichmentResultSchema.parse(JSON.parse(text));
-
-  const maxIndex = input.offers.length - 1;
-  return parsed.groups.map((group) => ({
-    ...group,
-    matchedOfferIndexes: group.matchedOfferIndexes.filter((i) => i >= 0 && i <= maxIndex),
-  }));
-}
-
-/** Chamada mínima para validar uma chave Gemini antes de salvá-la. */
-export async function testGeminiApiKey(apiKey: string, model = DEFAULT_GEMINI_MODEL): Promise<boolean> {
-  try {
-    const ai = new GoogleGenAI({ apiKey });
+  return withGeminiModelFallback(preferredModel, async (model) => {
     const response = await ai.models.generateContent({
       model,
-      contents: "Responda apenas com: ok",
+      contents: buildPrompt(input.query, input.offers),
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+      },
     });
-    return Boolean(response.text);
+
+    const text = response.text;
+    if (!text) throw new Error("Gemini retornou resposta vazia");
+
+    const parsed = enrichmentResultSchema.parse(JSON.parse(text));
+
+    const maxIndex = input.offers.length - 1;
+    return parsed.groups.map((group) => ({
+      ...group,
+      matchedOfferIndexes: group.matchedOfferIndexes.filter((i) => i >= 0 && i <= maxIndex),
+    }));
+  });
+}
+
+/** Chamada mínima para validar uma chave Gemini antes de salvá-la — também passa pela cascata. */
+export async function testGeminiApiKey(apiKey: string, preferredModel = DEFAULT_GEMINI_MODEL): Promise<boolean> {
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    await withGeminiModelFallback(preferredModel, (model) =>
+      ai.models.generateContent({ model, contents: "Responda apenas com: ok" }),
+    );
+    return true;
   } catch {
     return false;
   }

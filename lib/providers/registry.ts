@@ -54,6 +54,47 @@ const staticProviders: PriceProvider[] = [
     apiBaseUrl: "https://www.paguemenos.com.br",
     siteBaseUrl: "https://www.paguemenos.com.br",
   }),
+  // Americanas: marketplace generalista enorme (eletrônicos, casa, brinquedos, de tudo) —
+  // junto com o Carrefour, é a fonte mais "genérica" hoje além do Mercado Livre.
+  createVtexProvider({
+    key: "vtex:americanas",
+    displayName: "Americanas",
+    storeSlug: "americanas",
+    apiBaseUrl: "https://www.americanas.com.br",
+    siteBaseUrl: "https://www.americanas.com.br",
+  }),
+  // Droga São Paulo: farmácia, segunda opção além da Pague Menos.
+  createVtexProvider({
+    key: "vtex:drogariasaopaulo",
+    displayName: "Droga São Paulo",
+    storeSlug: "drogariasaopaulo",
+    apiBaseUrl: "https://www.drogariasaopaulo.com.br",
+    siteBaseUrl: "https://www.drogariasaopaulo.com.br",
+  }),
+  // Tok&Stok: móveis e decoração.
+  createVtexProvider({
+    key: "vtex:tokstok",
+    displayName: "Tok&Stok",
+    storeSlug: "tokstok",
+    apiBaseUrl: "https://www.tokstok.com.br",
+    siteBaseUrl: "https://www.tokstok.com.br",
+  }),
+  // Cobasi: pet shop — ração, produtos para animais.
+  createVtexProvider({
+    key: "vtex:cobasi",
+    displayName: "Cobasi",
+    storeSlug: "cobasi",
+    apiBaseUrl: "https://www.cobasi.com.br",
+    siteBaseUrl: "https://www.cobasi.com.br",
+  }),
+  // Zona Sul: supermercado — alimentos, mercearia, bebidas.
+  createVtexProvider({
+    key: "vtex:zonasul",
+    displayName: "Zona Sul",
+    storeSlug: "zonasul",
+    apiBaseUrl: "https://www.zonasul.com.br",
+    siteBaseUrl: "https://www.zonasul.com.br",
+  }),
   // Scraping HTML (Cheerio) para lojas sem API: use `createHtmlScraperProvider` de
   // "./htmlScraperProvider" com os seletores reais da loja escolhida. Não incluímos uma loja
   // pronta aqui de propósito — os seletores CSS de um site precisam ser inspecionados e
