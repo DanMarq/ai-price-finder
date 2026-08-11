@@ -95,10 +95,28 @@ const staticProviders: PriceProvider[] = [
     apiBaseUrl: "https://www.zonasul.com.br",
     siteBaseUrl: "https://www.zonasul.com.br",
   }),
+  // Polishop: eletrônicos de consumo, bem-estar, utilidades — endpoint testado manualmente
+  // antes de adicionar (ver processo abaixo).
+  createVtexProvider({
+    key: "vtex:polishop",
+    displayName: "Polishop",
+    storeSlug: "polishop",
+    apiBaseUrl: "https://www.polishop.com.br",
+    siteBaseUrl: "https://www.polishop.com.br",
+  }),
   // Scraping HTML (Cheerio) para lojas sem API: use `createHtmlScraperProvider` de
   // "./htmlScraperProvider" com os seletores reais da loja escolhida. Não incluímos uma loja
   // pronta aqui de propósito — os seletores CSS de um site precisam ser inspecionados e
   // validados manualmente antes de confiar neles em produção (veja comentário no factory).
+  //
+  // Sobre marketplaces grandes (Shopee, Amazon, Magazine Luiza, Netshoes, Centauro, Casas
+  // Bahia, Extra, Kabum, Ponto Frio...): testamos (curl real, ago/2026) os endpoints de catálogo
+  // dessas lojas e todos retornam 403 (bloqueio de bot/WAF pra IP de datacenter) ou migraram pra
+  // front-end 100% client-side-rendered sem API pública acessível por fetch simples (o caso da
+  // Shopee — SPA, exige navegador real, e scraping agressivo lá viola os Termos de Uso). Não é
+  // algo que se resolve com mais código nesta modalidade leve (fetch + Cheerio, sem browser) —
+  // exigiria um serviço à parte de scraping com browser headless + proxies residenciais (custo
+  // recorrente, mais fragilidade, risco de ToS). Ver conversa/decisão antes de investir nisso.
 ];
 
 export function getAllProviders(): PriceProvider[] {

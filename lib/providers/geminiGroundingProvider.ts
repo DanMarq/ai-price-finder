@@ -32,7 +32,11 @@ export function createGeminiGroundingProvider(apiKey: string, preferredModel: st
       const ai = new GoogleGenAI({ apiKey });
 
       try {
-        const offers = await withGeminiModelFallback(preferredModel, async (model) => {
+        const offers = await withGeminiModelFallback(preferredModel, async (model, cascadeSignal) => {
+          // Combina o abort do orquestrador (timeout do provider como um todo) com o da própria
+          // cascata (timeout por tentativa de modelo) — qualquer um dos dois cancela a chamada.
+          const signal = opts?.signal ? AbortSignal.any([opts.signal, cascadeSignal]) : cascadeSignal;
+
           const response = await ai.models.generateContent({
             model,
             contents: `Pesquise na web preços atuais para "${query}" em lojas online confiáveis do Brasil.
@@ -41,6 +45,7 @@ Responda SOMENTE com um bloco JSON no formato:
 Inclua no máximo ${opts?.limit ?? 10} ofertas, só de lojas reais com URL de produto válida.`,
             config: {
               tools: [{ googleSearch: {} }],
+              abortSignal: signal,
             },
           });
 

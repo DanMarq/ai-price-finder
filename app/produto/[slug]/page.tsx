@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getProductDetail } from "@/lib/products/getProductDetail";
+import { resolveGeminiConfig } from "@/lib/ai/resolveApiKey";
 import { PriceComparisonTable } from "@/components/product/PriceComparisonTable";
 import { PriceChart } from "@/components/product/PriceChart";
 import { AlertButton } from "@/components/product/AlertButton";
+import { ProductAssistantCard } from "@/components/product/ProductAssistantCard";
 import { formatBRL } from "@/lib/utils/money";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -26,11 +29,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   if (!product) notFound();
 
-  const existingAlert = session?.user?.id
-    ? await prisma.priceAlert.findUnique({
-        where: { userId_productId: { userId: session.user.id, productId: product.id } },
-      })
-    : null;
+  const [existingAlert, geminiConfig] = await Promise.all([
+    session?.user?.id
+      ? prisma.priceAlert.findUnique({
+          where: { userId_productId: { userId: session.user.id, productId: product.id } },
+        })
+      : null,
+    resolveGeminiConfig(session?.user?.id),
+  ]);
 
   const cheapest = product.offers[0];
 
@@ -98,6 +104,16 @@ export default async function ProductPage({ params }: ProductPageProps) {
               }
             />
           </div>
+
+          {geminiConfig && (
+            <div className="mt-5">
+              {/* Suspense isola a chamada de IA — se demorar ou falhar, o resto da página já
+                  está na tela havia tempo. */}
+              <Suspense fallback={null}>
+                <ProductAssistantCard apiKey={geminiConfig.apiKey} product={product} />
+              </Suspense>
+            </div>
+          )}
         </div>
       </div>
 

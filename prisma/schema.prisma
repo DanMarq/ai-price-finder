@@ -92,6 +92,13 @@ enum AiProvider {
   GEMINI
 }
 
+enum PriceAssessment {
+  GOOD_DEAL
+  TYPICAL
+  ABOVE_AVERAGE
+  INSUFFICIENT_DATA
+}
+
 model Store {
   id          String   @id @default(cuid())
   name        String
@@ -122,8 +129,22 @@ model Product {
 
   offers      ProductOffer[]
   priceAlerts PriceAlert[]
+  insight     ProductInsight?
 
   @@index([canonicalTitle])
+}
+
+// Cache do "assistente de produto" (dica curta + validação de preço via IA), gerado sob demanda
+// na página /produto/[slug] — ver lib/ai/productAssistant.ts. TTL controlado em código
+// (generatedAt + janela fixa), não no banco, pra manter a regra num só lugar.
+model ProductInsight {
+  id              String          @id @default(cuid())
+  productId       String          @unique
+  tip             String          @db.Text
+  priceAssessment PriceAssessment
+  generatedAt     DateTime        @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model ProductOffer {

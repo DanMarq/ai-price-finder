@@ -32,18 +32,27 @@ export interface PriceProvider {
 const DEFAULT_TIMEOUT_MS = 8000;
 
 /**
- * Roda uma promise de provider com timeout próprio, sem deixar uma fonte lenta travar a busca inteira.
- * Nunca rejeita por timeout "estourado sem tratamento" — quem chama decide o que fazer com o erro.
+ * Roda uma promise de provider com timeout próprio, sem deixar uma fonte lenta travar a busca
+ * inteira. Aborta o `signal` (para quem honra) E corre uma race contra um timer que rejeita —
+ * assim uma fonte que ignore o `AbortSignal` (ex: uma chamada de SDK que não recebe o signal)
+ * ainda não consegue travar a busca além de `timeoutMs`.
  */
 export async function withTimeout<T>(
   factory: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timeout: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`timeout após ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
   try {
-    return await factory(controller.signal);
+    return await Promise.race([factory(controller.signal), timeoutPromise]);
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timeout!);
   }
 }

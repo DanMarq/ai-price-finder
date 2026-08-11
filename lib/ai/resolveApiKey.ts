@@ -31,10 +31,12 @@ export async function resolveGeminiConfig(userId?: string): Promise<ResolvedGemi
     return {
       apiKey: globalKey,
       model: process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
-      // Liga a busca com IA (Gemini + Google Search) como fonte extra para todo mundo por
-      // padrão — cobre categorias que nenhuma loja cadastrada vende (eletrônicos, alimentos,
-      // etc). Custa cota extra da API Gemini; desligue com GEMINI_ENABLE_GROUNDING_SEARCH=false.
-      enableGroundingSearch: process.env.GEMINI_ENABLE_GROUNDING_SEARCH !== "false",
+      // Opt-in (desligado por padrão): faz o Gemini "pesquisar a web inteira" a cada busca,
+      // reimplementando via LLM o que os providers estruturados (Mercado Livre, VTEX) já fazem
+      // de forma mais rápida e barata. É a fonte mais lenta/cara de todas — cada busca paga o
+      // custo de uma cascata de modelos inteira. Ligue com GEMINI_ENABLE_GROUNDING_SEARCH=true
+      // só se quiser cobrir categorias sem nenhuma loja cadastrada, sabendo do custo extra.
+      enableGroundingSearch: process.env.GEMINI_ENABLE_GROUNDING_SEARCH === "true",
       source: "global",
     };
   }

@@ -110,6 +110,16 @@ async function refreshAccessToken(refreshTokenValue: string): Promise<string> {
 }
 
 /**
+ * Checagem rápida (sem chamar a API do ML) usada pelo orquestrador de busca para avisar o
+ * usuário quando a fonte Mercado Livre está fora do ar por falta de conexão, em vez de ela
+ * simplesmente desaparecer dos resultados sem explicação.
+ */
+export async function isMercadoLivreConnected(): Promise<boolean> {
+  const record = await prisma.integrationToken.findUnique({ where: { provider: PROVIDER } });
+  return Boolean(record);
+}
+
+/**
  * Retorna um access_token válido do Mercado Livre, renovando automaticamente via refresh_token
  * quando necessário. Retorna null se a integração nunca foi conectada (ver rota /authorize) —
  * nesse caso o provider correspondente simplesmente não contribui candidatos para a busca.

@@ -77,6 +77,12 @@ const STORES = [
     providerKey: "vtex:zonasul",
     websiteUrl: "https://www.zonasul.com.br",
   },
+  {
+    slug: "polishop",
+    name: "Polishop",
+    providerKey: "vtex:polishop",
+    websiteUrl: "https://www.polishop.com.br",
+  },
 ]
 
 async function main() {

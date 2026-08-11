@@ -29,3 +29,10 @@ export const groundingResultSchema = z.object({
 });
 
 export type GroundingOffer = z.infer<typeof groundingOfferSchema>;
+
+export const productInsightSchema = z.object({
+  tip: z.string().min(1),
+  priceAssessment: z.enum(["GOOD_DEAL", "TYPICAL", "ABOVE_AVERAGE", "INSUFFICIENT_DATA"]),
+});
+
+export type ProductInsight = z.infer<typeof productInsightSchema>;

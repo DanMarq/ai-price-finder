@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { getActiveProviders } from "@/lib/providers/registry";
 import { createGeminiGroundingProvider } from "@/lib/providers/geminiGroundingProvider";
-import { withTimeout, type PriceProvider, type RawOffer } from "@/lib/providers/types";
+import { withTimeout, type RawOffer } from "@/lib/providers/types";
 import { resolveGeminiConfig } from "@/lib/ai/resolveApiKey";
+import { isMercadoLivreConnected } from "@/lib/integrations/mercadoLivre";
 import { enrichOffersWithGemini } from "@/lib/ai/gemini";
 import type { EnrichedGroup } from "@/lib/ai/schemas";
 import { groupOffersHeuristically } from "./normalize";
@@ -143,14 +144,16 @@ export async function upsertOfferAndHistory(productId: string, storeId: string, 
 }
 
 async function persistGroups(offers: RawOffer[], groups: EnrichedGroup[]): Promise<string[]> {
-  const productIds: string[] = [];
-  const storeCache = new Map<string, Awaited<ReturnType<typeof prisma.store.upsert>>>();
+  // Cacheia a PROMISE (não o valor resolvido) — assim, se dois grupos concorrentes referenciam a
+  // mesma loja antes do primeiro upsert terminar, ambos reusam a mesma chamada em vez de disparar
+  // upserts redundantes para a mesma linha.
+  const storeCache = new Map<string, ReturnType<typeof prisma.store.upsert>>();
 
-  async function getOrCreateStore(offer: RawOffer) {
+  function getOrCreateStore(offer: RawOffer) {
     const cached = storeCache.get(offer.storeSlug);
     if (cached) return cached;
 
-    const store = await prisma.store.upsert({
+    const promise = prisma.store.upsert({
       where: { slug: offer.storeSlug },
       create: {
         slug: offer.storeSlug,
@@ -161,56 +164,62 @@ async function persistGroups(offers: RawOffer[], groups: EnrichedGroup[]): Promi
       },
       update: {},
     });
-    storeCache.set(offer.storeSlug, store);
-    return store;
+    storeCache.set(offer.storeSlug, promise);
+    return promise;
   }
 
-  for (const group of groups) {
-    if (group.matchedOfferIndexes.length === 0) continue;
+  // Grupos são persistidos em paralelo (não um `for...of` sequencial) — com dezenas de grupos
+  // por busca, gravar um de cada vez multiplicava a latência de rede até o Postgres (Supabase)
+  // pelo número de grupos, virando o maior gargalo da busca depois que a cascata do Gemini
+  // ganhou um teto de tempo. O pool de conexões (ver lib/prisma.ts) limita a concorrência real.
+  const productIds = await Promise.all(
+    groups.map(async (group): Promise<string | null> => {
+      if (group.matchedOfferIndexes.length === 0) return null;
 
-    const matchedOffers = group.matchedOfferIndexes
-      .map((i) => offers[i])
-      .filter((o): o is RawOffer => Boolean(o));
-    if (matchedOffers.length === 0) continue;
+      const matchedOffers = group.matchedOfferIndexes
+        .map((i) => offers[i])
+        .filter((o): o is RawOffer => Boolean(o));
+      if (matchedOffers.length === 0) return null;
 
-    const slug = slugWithHash(group.canonicalTitle);
-    const cheapestPrice = Math.min(...matchedOffers.map((o) => o.price));
+      const slug = slugWithHash(group.canonicalTitle);
+      const cheapestPrice = Math.min(...matchedOffers.map((o) => o.price));
 
-    const product = await prisma.product.upsert({
-      where: { slug },
-      create: {
-        slug,
-        canonicalTitle: group.canonicalTitle,
-        brand: group.brand,
-        category: group.category,
-        imageUrl: matchedOffers.find((o) => o.imageUrl)?.imageUrl ?? null,
-        lowestPriceEver: cheapestPrice,
-      },
-      update: {
-        canonicalTitle: group.canonicalTitle,
-        brand: group.brand ?? undefined,
-        category: group.category ?? undefined,
-      },
-    });
-
-    if (product.lowestPriceEver === null || cheapestPrice < Number(product.lowestPriceEver)) {
-      await prisma.product.update({
-        where: { id: product.id },
-        data: { lowestPriceEver: cheapestPrice },
+      const product = await prisma.product.upsert({
+        where: { slug },
+        create: {
+          slug,
+          canonicalTitle: group.canonicalTitle,
+          brand: group.brand,
+          category: group.category,
+          imageUrl: matchedOffers.find((o) => o.imageUrl)?.imageUrl ?? null,
+          lowestPriceEver: cheapestPrice,
+        },
+        update: {
+          canonicalTitle: group.canonicalTitle,
+          brand: group.brand ?? undefined,
+          category: group.category ?? undefined,
+        },
       });
-    }
 
-    await Promise.all(
-      matchedOffers.map(async (offer) => {
-        const store = await getOrCreateStore(offer);
-        await upsertOfferAndHistory(product.id, store.id, offer);
-      }),
-    );
+      if (product.lowestPriceEver === null || cheapestPrice < Number(product.lowestPriceEver)) {
+        await prisma.product.update({
+          where: { id: product.id },
+          data: { lowestPriceEver: cheapestPrice },
+        });
+      }
 
-    productIds.push(product.id);
-  }
+      await Promise.all(
+        matchedOffers.map(async (offer) => {
+          const store = await getOrCreateStore(offer);
+          await upsertOfferAndHistory(product.id, store.id, offer);
+        }),
+      );
 
-  return productIds;
+      return product.id;
+    }),
+  );
+
+  return productIds.filter((id): id is string => Boolean(id));
 }
 
 function safeOrigin(url: string): string {
@@ -255,9 +264,20 @@ async function runSearch(
     }
   }
 
-  const geminiConfig = await resolveGeminiConfig(opts.userId);
+  const [geminiConfig, providers, mercadoLivreConnected] = await Promise.all([
+    resolveGeminiConfig(opts.userId),
+    getActiveProviders(),
+    isMercadoLivreConnected(),
+  ]);
 
-  const providers: PriceProvider[] = await getActiveProviders();
+  // Sem isso, um Mercado Livre desconectado só aparecia como um warn no log do servidor — o
+  // usuário via a fonte simplesmente desaparecer dos resultados, sem entender por quê.
+  if (!mercadoLivreConnected && providers.some((provider) => provider.key === "mercado_livre")) {
+    warnings.push(
+      "Mercado Livre não conectado — reconecte em /api/integrations/mercado-livre/authorize.",
+    );
+  }
+
   if (geminiConfig?.enableGroundingSearch) {
     providers.push(createGeminiGroundingProvider(geminiConfig.apiKey, geminiConfig.model));
   }
