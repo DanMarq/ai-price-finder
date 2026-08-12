@@ -142,6 +142,8 @@ model ProductInsight {
   productId       String          @unique
   tip             String          @db.Text
   priceAssessment PriceAssessment
+  // Null quando o produto não tem ficha técnica coletada pra comentar.
+  specHighlight   String?         @db.Text
   generatedAt     DateTime        @default(now())
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -162,6 +164,9 @@ model ProductOffer {
   externalId    String?
   rating        Float?
   reviewsCount  Int?
+  // Ficha técnica ("Marca", "Voltagem", "Peso"...) como a loja de origem descreve — por
+  // oferta, não por produto, porque cada loja usa seu próprio conjunto de campos.
+  specs         Json?
   // false quando a oferta some/dá 404 na loja de origem.
   isActive      Boolean            @default(true)
   lastCheckedAt DateTime           @default(now())

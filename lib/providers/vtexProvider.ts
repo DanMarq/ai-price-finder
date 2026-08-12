@@ -22,6 +22,25 @@ interface VtexProduct {
   brand?: string;
   linkText: string;
   items: VtexItem[];
+  // Lista os NOMES dos campos de ficha técnica — cada nome também existe como chave solta no
+  // próprio objeto (ex: `allSpecifications: ["Voltagem"]` e `product.Voltagem: ["220V"]`).
+  allSpecifications?: string[];
+  [key: string]: unknown;
+}
+
+/** Lê a ficha técnica a partir de `allSpecifications` — cada nome listado é uma chave solta no produto. */
+function extractSpecs(product: VtexProduct): Record<string, string> | null {
+  if (!product.allSpecifications?.length) return null;
+
+  const specs: Record<string, string> = {};
+  for (const name of product.allSpecifications) {
+    const value = product[name];
+    if (Array.isArray(value) && value.length > 0) {
+      const joined = value.filter((v) => typeof v === "string" && v.trim()).join(", ");
+      if (joined) specs[name] = joined;
+    }
+  }
+  return Object.keys(specs).length > 0 ? specs : null;
 }
 
 interface VtexProviderConfig {
@@ -98,6 +117,7 @@ export function createVtexProvider(config: VtexProviderConfig): PriceProvider {
               externalId: product.productId,
               rating: null,
               reviewsCount: null,
+              specs: extractSpecs(product),
               fetchedAt,
             };
           })

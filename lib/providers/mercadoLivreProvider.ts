@@ -3,6 +3,11 @@ import type { PriceProvider, ProviderSearchOptions, RawOffer } from "./types";
 
 const SITE_ID = "MLB"; // Brasil
 
+interface MlAttribute {
+  name: string;
+  value_name: string | null;
+}
+
 interface MlSearchResult {
   id: string;
   title: string;
@@ -13,10 +18,23 @@ interface MlSearchResult {
   available_quantity: number;
   seller?: { nickname?: string };
   shipping?: { free_shipping?: boolean };
+  // Ficha técnica básica (marca, modelo, cor...) — já vem no resultado da busca, sem precisar
+  // de uma segunda chamada ao endpoint de detalhe do item.
+  attributes?: MlAttribute[];
 }
 
 interface MlSearchResponse {
   results: MlSearchResult[];
+}
+
+function extractSpecs(attributes?: MlAttribute[]): Record<string, string> | null {
+  if (!attributes?.length) return null;
+
+  const specs: Record<string, string> = {};
+  for (const attr of attributes) {
+    if (attr.value_name?.trim()) specs[attr.name] = attr.value_name.trim();
+  }
+  return Object.keys(specs).length > 0 ? specs : null;
 }
 
 /**
@@ -69,6 +87,7 @@ export const mercadoLivreProvider: PriceProvider = {
         externalId: item.id,
         rating: null,
         reviewsCount: null,
+        specs: extractSpecs(item.attributes),
         fetchedAt,
       }));
     } catch (error) {

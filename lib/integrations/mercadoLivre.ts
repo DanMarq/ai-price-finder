@@ -1,41 +1,41 @@
-import { prisma } from "@/lib/prisma";
-import { encrypt, decrypt } from "@/lib/crypto";
+import { prisma } from "@/lib/prisma"
+import { encrypt, decrypt } from "@/lib/crypto"
 
-const PROVIDER = "mercado_livre";
-const TOKEN_URL = "https://api.mercadolibre.com/oauth/token";
-const AUTHORIZE_URL = "https://auth.mercadolivre.com.br/authorization";
+const PROVIDER = "mercado_livre"
+const TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
+const AUTHORIZE_URL = "https://auth.mercadolivre.com.br/authorization"
 // Renova um pouco antes do vencimento real para nunca usar um token borderline.
-const REFRESH_SAFETY_MARGIN_MS = 5 * 60 * 1000;
+const REFRESH_SAFETY_MARGIN_MS = 5 * 60 * 1000
 
 interface MlTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  scope: string;
-  user_id: number;
-  refresh_token: string;
+  access_token: string
+  token_type: string
+  expires_in: number
+  scope: string
+  user_id: number
+  refresh_token: string
 }
 
 export function getMercadoLivreRedirectUri(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  if (!base) throw new Error("NEXT_PUBLIC_APP_URL não configurada");
-  return `${base}/api/integrations/mercado-livre/callback`;
+  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")
+  if (!base) throw new Error("NEXT_PUBLIC_APP_URL não configurada")
+  return `${base}/api/integrations/mercado-livre/callback`
 }
 
 /** URL para onde o dono do deploy deve ser redirecionado para autorizar o app (fluxo manual, único). */
 export function buildMercadoLivreAuthorizeUrl(): string {
-  const clientId = process.env.MERCADO_LIVRE_CLIENT_ID;
-  if (!clientId) throw new Error("MERCADO_LIVRE_CLIENT_ID não configurado");
+  const clientId = process.env.MERCADO_LIVRE_CLIENT_ID
+  if (!clientId) throw new Error("MERCADO_LIVRE_CLIENT_ID não configurado")
 
-  const url = new URL(AUTHORIZE_URL);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("redirect_uri", getMercadoLivreRedirectUri());
-  return url.toString();
+  const url = new URL(AUTHORIZE_URL)
+  url.searchParams.set("response_type", "code")
+  url.searchParams.set("client_id", clientId)
+  url.searchParams.set("redirect_uri", getMercadoLivreRedirectUri())
+  return url.toString()
 }
 
 async function persistTokens(data: MlTokenResponse): Promise<void> {
-  const expiresAt = new Date(Date.now() + data.expires_in * 1000 - REFRESH_SAFETY_MARGIN_MS);
+  const expiresAt = new Date(Date.now() + data.expires_in * 1000 - REFRESH_SAFETY_MARGIN_MS)
 
   await prisma.integrationToken.upsert({
     where: { provider: PROVIDER },
@@ -50,21 +50,21 @@ async function persistTokens(data: MlTokenResponse): Promise<void> {
       encryptedRefreshToken: encrypt(data.refresh_token),
       expiresAt,
     },
-  });
+  })
 }
 
 function getClientCredentials(): { clientId: string; clientSecret: string } {
-  const clientId = process.env.MERCADO_LIVRE_CLIENT_ID;
-  const clientSecret = process.env.MERCADO_LIVRE_CLIENT_SECRET;
+  const clientId = process.env.MERCADO_LIVRE_CLIENT_ID
+  const clientSecret = process.env.MERCADO_LIVRE_CLIENT_SECRET
   if (!clientId || !clientSecret) {
-    throw new Error("MERCADO_LIVRE_CLIENT_ID/MERCADO_LIVRE_CLIENT_SECRET não configurados");
+    throw new Error("MERCADO_LIVRE_CLIENT_ID/MERCADO_LIVRE_CLIENT_SECRET não configurados")
   }
-  return { clientId, clientSecret };
+  return { clientId, clientSecret }
 }
 
 /** Troca o `code` do callback OAuth pelo primeiro par access_token/refresh_token. */
 export async function exchangeCodeForToken(code: string): Promise<void> {
-  const { clientId, clientSecret } = getClientCredentials();
+  const { clientId, clientSecret } = getClientCredentials()
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",
@@ -76,18 +76,18 @@ export async function exchangeCodeForToken(code: string): Promise<void> {
       code,
       redirect_uri: getMercadoLivreRedirectUri(),
     }),
-  });
+  })
 
   if (!response.ok) {
-    throw new Error(`Falha ao trocar code por token (HTTP ${response.status}): ${await response.text()}`);
+    throw new Error(`Falha ao trocar code por token (HTTP ${response.status}): ${await response.text()}`)
   }
 
-  await persistTokens((await response.json()) as MlTokenResponse);
+  await persistTokens((await response.json()) as MlTokenResponse)
 }
 
 /** O refresh_token do Mercado Livre é de uso único — cada renovação já grava o novo par. */
 async function refreshAccessToken(refreshTokenValue: string): Promise<string> {
-  const { clientId, clientSecret } = getClientCredentials();
+  const { clientId, clientSecret } = getClientCredentials()
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",
@@ -98,15 +98,15 @@ async function refreshAccessToken(refreshTokenValue: string): Promise<string> {
       client_secret: clientSecret,
       refresh_token: refreshTokenValue,
     }),
-  });
+  })
 
   if (!response.ok) {
-    throw new Error(`Falha ao renovar token (HTTP ${response.status}): ${await response.text()}`);
+    throw new Error(`Falha ao renovar token (HTTP ${response.status}): ${await response.text()}`)
   }
 
-  const data = (await response.json()) as MlTokenResponse;
-  await persistTokens(data);
-  return data.access_token;
+  const data = (await response.json()) as MlTokenResponse
+  await persistTokens(data)
+  return data.access_token
 }
 
 /**
@@ -115,8 +115,8 @@ async function refreshAccessToken(refreshTokenValue: string): Promise<string> {
  * simplesmente desaparecer dos resultados sem explicação.
  */
 export async function isMercadoLivreConnected(): Promise<boolean> {
-  const record = await prisma.integrationToken.findUnique({ where: { provider: PROVIDER } });
-  return Boolean(record);
+  const record = await prisma.integrationToken.findUnique({ where: { provider: PROVIDER } })
+  return Boolean(record)
 }
 
 /**
@@ -125,17 +125,21 @@ export async function isMercadoLivreConnected(): Promise<boolean> {
  * nesse caso o provider correspondente simplesmente não contribui candidatos para a busca.
  */
 export async function getMercadoLivreAccessToken(): Promise<string | null> {
-  const record = await prisma.integrationToken.findUnique({ where: { provider: PROVIDER } });
-  if (!record) return null;
-
-  if (record.expiresAt > new Date()) {
-    return decrypt(record.encryptedAccessToken);
-  }
+  const record = await prisma.integrationToken.findUnique({ where: { provider: PROVIDER } })
+  if (!record) return null
 
   try {
-    return await refreshAccessToken(decrypt(record.encryptedRefreshToken));
+    if (record.expiresAt > new Date()) {
+      return decrypt(record.encryptedAccessToken)
+    }
+    return await refreshAccessToken(decrypt(record.encryptedRefreshToken))
   } catch (error) {
-    console.warn("[mercado_livre] falha ao renovar token:", error);
-    return null;
+    // Cobre tanto falha ao renovar quanto falha ao descriptografar — este segundo caso acontece
+    // sobretudo quando ENCRYPTION_KEY difere entre ambientes (ex: local com uma chave, Vercel
+    // com outra): o token foi salvo criptografado com uma chave e lido com outra, o que sempre
+    // falha (GCM rejeita a autenticação). Sem este catch, isso derrubava a chamada inteira em vez
+    // de só desativar essa fonte pra essa busca.
+    console.warn("[mercado_livre] falha ao obter/renovar token:", error)
+    return null
   }
 }

@@ -113,10 +113,13 @@ const staticProviders: PriceProvider[] = [
   // Bahia, Extra, Kabum, Ponto Frio...): testamos (curl real, ago/2026) os endpoints de catálogo
   // dessas lojas e todos retornam 403 (bloqueio de bot/WAF pra IP de datacenter) ou migraram pra
   // front-end 100% client-side-rendered sem API pública acessível por fetch simples (o caso da
-  // Shopee — SPA, exige navegador real, e scraping agressivo lá viola os Termos de Uso). Não é
-  // algo que se resolve com mais código nesta modalidade leve (fetch + Cheerio, sem browser) —
-  // exigiria um serviço à parte de scraping com browser headless + proxies residenciais (custo
-  // recorrente, mais fragilidade, risco de ToS). Ver conversa/decisão antes de investir nisso.
+  // Shopee — SPA, exige navegador real, e scraping agressivo lá viola os Termos de Uso). Também
+  // tentamos a rede de afiliados Lomadee (ago/2026): nem Magazine Luiza nem Casas Bahia estão
+  // no catálogo de marcas disponíveis pra essa conta — removido. Não é algo que se resolve com
+  // mais código nesta modalidade leve (fetch + Cheerio, sem browser) — exigiria um serviço à
+  // parte de scraping com browser headless + proxies residenciais (custo recorrente, mais
+  // fragilidade, risco de ToS) ou um serviço terceirizado de scraping-as-a-service (Apify,
+  // GeckoAPI). Ver conversa/decisão antes de investir nisso.
 ];
 
 export function getAllProviders(): PriceProvider[] {

@@ -13,6 +13,8 @@ export interface RawOffer {
   externalId?: string | null;
   rating?: number | null;
   reviewsCount?: number | null;
+  /** Ficha técnica como a loja de origem descreve (ex: {"Marca": "Pampers", "Peso": "1.2kg"}). */
+  specs?: Record<string, string> | null;
   fetchedAt: string;
 }
 

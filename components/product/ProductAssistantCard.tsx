@@ -34,6 +34,12 @@ export async function ProductAssistantCard({ apiKey, product }: ProductAssistant
         <Badge tone={assessment.tone}>{assessment.label}</Badge>
       </div>
       <p className="mt-2 text-sm text-muted-foreground">{insight.tip}</p>
+      {insight.specHighlight && (
+        <p className="mt-2 border-t border-border pt-2 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">Da ficha técnica: </span>
+          {insight.specHighlight}
+        </p>
+      )}
     </Card>
   )
 }

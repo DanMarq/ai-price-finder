@@ -19,15 +19,22 @@ export async function runPriceCheckJob(opts: { timeBudgetMs: number }): Promise<
   const start = Date.now();
   const result: PriceCheckJobResult = { processed: 0, emailsSent: 0, errors: [] };
 
-  const alertedProducts = await prisma.priceAlert.findMany({
-    where: { status: "ACTIVE" },
-    select: { productId: true },
-    distinct: ["productId"],
+  // Antes só reprocessava produtos com alerta de preço ativo — a maioria não tem, então nunca
+  // ganhava um 2º ponto de PriceHistory e o gráfico ficava sempre vazio. Agora cobre TODOS os
+  // produtos com oferta ativa, priorizando quem está há mais tempo sem checar — o orçamento de
+  // tempo abaixo garante que uma execução não trava, só processa o quanto couber e continua de
+  // onde parou na próxima (o cron já roda 1x/dia, ver vercel.json).
+  const staleOffers = await prisma.productOffer.groupBy({
+    by: ["productId"],
+    where: { isActive: true },
+    _min: { lastCheckedAt: true },
+    orderBy: { _min: { lastCheckedAt: "asc" } },
   });
+  const candidateProductIds = staleOffers.map((o) => o.productId);
 
-  for (const { productId } of alertedProducts) {
+  for (const productId of candidateProductIds) {
     if (Date.now() - start > opts.timeBudgetMs) {
-      result.errors.push(`Orçamento de tempo esgotado; ${alertedProducts.length - result.processed} produto(s) ficaram para a próxima execução`);
+      result.errors.push(`Orçamento de tempo esgotado; ${candidateProductIds.length - result.processed} produto(s) ficaram para a próxima execução`);
       break;
     }
 

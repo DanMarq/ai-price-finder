@@ -19,10 +19,29 @@ interface VtexProduct {
   productName: string;
   link: string;
   items: VtexItem[];
+  // Mesmo formato do catálogo legado (ver vtexProvider.ts): nomes dos campos de ficha
+  // técnica, cada um também presente como chave solta no produto.
+  allSpecifications?: string[];
+  [key: string]: unknown;
 }
 
 interface VtexSearchResponse {
   products: VtexProduct[];
+}
+
+/** Mesma lógica do provider VTEX legado — ver vtexProvider.ts. */
+function extractSpecs(product: VtexProduct): Record<string, string> | null {
+  if (!product.allSpecifications?.length) return null;
+
+  const specs: Record<string, string> = {};
+  for (const name of product.allSpecifications) {
+    const value = product[name];
+    if (Array.isArray(value) && value.length > 0) {
+      const joined = value.filter((v) => typeof v === "string" && v.trim()).join(", ");
+      if (joined) specs[name] = joined;
+    }
+  }
+  return Object.keys(specs).length > 0 ? specs : null;
 }
 
 interface VtexIntelligentSearchConfig {
@@ -94,6 +113,7 @@ export function createVtexIntelligentSearchProvider(config: VtexIntelligentSearc
               externalId: product.productId,
               rating: null,
               reviewsCount: null,
+              specs: extractSpecs(product),
               fetchedAt,
             };
           })

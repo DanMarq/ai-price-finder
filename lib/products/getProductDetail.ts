@@ -14,6 +14,7 @@ export interface ProductDetailOffer {
   imageUrl: string | null;
   rating: number | null;
   reviewsCount: number | null;
+  specs: Record<string, string> | null;
   updatedAt: string;
   history: { price: number; recordedAt: string }[];
 }
@@ -30,6 +31,27 @@ export interface ProductDetail {
 }
 
 const HISTORY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * Cada loja descreve o produto com um conjunto diferente de campos — em vez de misturar specs
+ * de lojas distintas (risco de conflito, ex: "Cor" diferente por variante), usa só a ficha da
+ * oferta com mais campos preenchidos. Compartilhado entre a UI (TechSpecsCard) e o assistente
+ * de IA (productAssistant.ts), que também precisa saber quais specs destacar.
+ */
+export function pickBestSpecs(offers: ProductDetailOffer[]): { specs: Record<string, string>; storeName: string } | null {
+  let best: { specs: Record<string, string>; storeName: string } | null = null;
+
+  for (const offer of offers) {
+    if (!offer.specs) continue;
+    const count = Object.keys(offer.specs).length;
+    if (count === 0) continue;
+    if (!best || count > Object.keys(best.specs).length) {
+      best = { specs: offer.specs, storeName: offer.storeName };
+    }
+  }
+
+  return best;
+}
 
 export async function getProductDetail(slug: string): Promise<ProductDetail | null> {
   const product = await prisma.product.findUnique({
@@ -64,6 +86,7 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
       imageUrl: offer.imageUrl,
       rating: offer.rating,
       reviewsCount: offer.reviewsCount,
+      specs: (offer.specs as Record<string, string> | null) ?? null,
       updatedAt: offer.lastCheckedAt.toISOString(),
       history: offer.history.map((h) => ({ price: Number(h.price), recordedAt: h.recordedAt.toISOString() })),
     }))

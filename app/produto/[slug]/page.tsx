@@ -1,33 +1,34 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { notFound } from "next/navigation";
-import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
-import { getProductDetail } from "@/lib/products/getProductDetail";
-import { resolveGeminiConfig } from "@/lib/ai/resolveApiKey";
-import { PriceComparisonTable } from "@/components/product/PriceComparisonTable";
-import { PriceChart } from "@/components/product/PriceChart";
-import { AlertButton } from "@/components/product/AlertButton";
-import { ProductAssistantCard } from "@/components/product/ProductAssistantCard";
-import { formatBRL } from "@/lib/utils/money";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
+import type { Metadata } from "next"
+import { Suspense } from "react"
+import { notFound } from "next/navigation"
+import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
+import { getProductDetail } from "@/lib/products/getProductDetail"
+import { resolveGeminiConfig } from "@/lib/ai/resolveApiKey"
+import { PriceComparisonTable } from "@/components/product/PriceComparisonTable"
+import { PriceChart } from "@/components/product/PriceChart"
+import { AlertButton } from "@/components/product/AlertButton"
+import { ProductAssistantCard } from "@/components/product/ProductAssistantCard"
+import { TechSpecsCard } from "@/components/product/TechSpecsCard"
+import { formatBRL } from "@/lib/utils/money"
+import { Badge } from "@/components/ui/Badge"
+import { Card } from "@/components/ui/Card"
 
 interface ProductPageProps {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slug: string }>
 }
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
-  const { slug } = await params;
-  const product = await getProductDetail(slug);
-  return { title: product ? `${product.canonicalTitle} | BuscaPreço IA` : "Produto não encontrado" };
+  const { slug } = await params
+  const product = await getProductDetail(slug)
+  return { title: product ? `${product.canonicalTitle} | BuscaPreço IA` : "Produto não encontrado" }
 }
 
 export default async function ProductPage({ params }: ProductPageProps) {
-  const { slug } = await params;
-  const [product, session] = await Promise.all([getProductDetail(slug), auth()]);
+  const { slug } = await params
+  const [product, session] = await Promise.all([getProductDetail(slug), auth()])
 
-  if (!product) notFound();
+  if (!product) notFound()
 
   const [existingAlert, geminiConfig] = await Promise.all([
     session?.user?.id
@@ -36,9 +37,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
         })
       : null,
     resolveGeminiConfig(session?.user?.id),
-  ]);
+  ])
 
-  const cheapest = product.offers[0];
+  const cheapest = product.offers[0]
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -130,6 +131,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
           <PriceChart offers={product.offers} />
         </div>
       </section>
+
+      <section className="mt-10">
+        <TechSpecsCard offers={product.offers} />
+      </section>
     </div>
-  );
+  )
 }
