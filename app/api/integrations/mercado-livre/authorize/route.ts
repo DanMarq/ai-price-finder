@@ -1,5 +1,10 @@
-import { NextResponse } from "next/server";
-import { buildMercadoLivreAuthorizeUrl } from "@/lib/integrations/mercadoLivre";
+import { NextResponse } from "next/server"
+import {
+  buildMercadoLivreAuthorizeUrl,
+  generateCodeChallenge,
+  generateCodeVerifier,
+  PKCE_COOKIE_NAME,
+} from "@/lib/integrations/mercadoLivre"
 
 /**
  * Passo manual e único de setup: acesse
@@ -8,17 +13,30 @@ import { buildMercadoLivreAuthorizeUrl } from "@/lib/integrations/mercadoLivre";
  * é renovado sozinho (ver lib/integrations/mercadoLivre.ts) e você não precisa repetir isso.
  */
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const secret = searchParams.get("secret");
+  const { searchParams } = new URL(request.url)
+  const secret = searchParams.get("secret")
 
   if (!process.env.ADMIN_SETUP_SECRET || secret !== process.env.ADMIN_SETUP_SECRET) {
-    return new NextResponse("Unauthorized", { status: 401 });
+    return new NextResponse("Unauthorized", { status: 401 })
   }
 
   try {
-    return NextResponse.redirect(buildMercadoLivreAuthorizeUrl());
+    const codeVerifier = generateCodeVerifier()
+    const codeChallenge = generateCodeChallenge(codeVerifier)
+
+    const response = NextResponse.redirect(buildMercadoLivreAuthorizeUrl(codeChallenge))
+    // O Mercado Livre exige PKCE: o verifier precisa sobreviver até o /callback sem viajar pela
+    // URL (isso anularia a proteção do PKCE) — um cookie httpOnly de curta duração resolve.
+    response.cookies.set(PKCE_COOKIE_NAME, codeVerifier, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: 600,
+      path: "/api/integrations/mercado-livre",
+    })
+    return response
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro desconhecido";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Erro desconhecido"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

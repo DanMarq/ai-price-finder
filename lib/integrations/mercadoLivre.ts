@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "crypto"
 import { prisma } from "@/lib/prisma"
 import { encrypt, decrypt } from "@/lib/crypto"
 
@@ -6,6 +7,17 @@ const TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
 const AUTHORIZE_URL = "https://auth.mercadolivre.com.br/authorization"
 // Renova um pouco antes do vencimento real para nunca usar um token borderline.
 const REFRESH_SAFETY_MARGIN_MS = 5 * 60 * 1000
+// Nome do cookie httpOnly que carrega o code_verifier do PKCE entre /authorize e /callback.
+export const PKCE_COOKIE_NAME = "ml_pkce_verifier"
+
+/** O Mercado Livre passou a exigir PKCE — gera o par verifier/challenge (S256). */
+export function generateCodeVerifier(): string {
+  return randomBytes(64).toString("base64url")
+}
+
+export function generateCodeChallenge(codeVerifier: string): string {
+  return createHash("sha256").update(codeVerifier).digest("base64url")
+}
 
 interface MlTokenResponse {
   access_token: string
@@ -23,7 +35,7 @@ export function getMercadoLivreRedirectUri(): string {
 }
 
 /** URL para onde o dono do deploy deve ser redirecionado para autorizar o app (fluxo manual, único). */
-export function buildMercadoLivreAuthorizeUrl(): string {
+export function buildMercadoLivreAuthorizeUrl(codeChallenge: string): string {
   const clientId = process.env.MERCADO_LIVRE_CLIENT_ID
   if (!clientId) throw new Error("MERCADO_LIVRE_CLIENT_ID não configurado")
 
@@ -31,6 +43,8 @@ export function buildMercadoLivreAuthorizeUrl(): string {
   url.searchParams.set("response_type", "code")
   url.searchParams.set("client_id", clientId)
   url.searchParams.set("redirect_uri", getMercadoLivreRedirectUri())
+  url.searchParams.set("code_challenge", codeChallenge)
+  url.searchParams.set("code_challenge_method", "S256")
   return url.toString()
 }
 
@@ -63,7 +77,7 @@ function getClientCredentials(): { clientId: string; clientSecret: string } {
 }
 
 /** Troca o `code` do callback OAuth pelo primeiro par access_token/refresh_token. */
-export async function exchangeCodeForToken(code: string): Promise<void> {
+export async function exchangeCodeForToken(code: string, codeVerifier: string): Promise<void> {
   const { clientId, clientSecret } = getClientCredentials()
 
   const response = await fetch(TOKEN_URL, {
@@ -75,6 +89,7 @@ export async function exchangeCodeForToken(code: string): Promise<void> {
       client_secret: clientSecret,
       code,
       redirect_uri: getMercadoLivreRedirectUri(),
+      code_verifier: codeVerifier,
     }),
   })
 
